@@ -1,0 +1,80 @@
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'maven-publish'
+
+def myPom = {
+    name POM_NAME
+    description POM_DESCRIPTION
+    url POM_URL
+    scm {
+        url project.POM_SCM_URL
+        connection project.POM_SCM_CONNECTION
+        developerConnection project.POM_SCM_DEV_CONNECTION
+    }
+    issueManagement {
+        url project.POM_ISSUE_TRACKER_URL
+        system project.POM_ISSUE_TRACKER_NAME
+    }
+    licenses {
+        license {
+            name project.POM_LICENCE_NAME
+            url project.POM_LICENCE_URL
+            distribution project.POM_LICENCE_DIST
+        }
+    }
+    developers {
+        developer {
+            id project.POM_DEVELOPER_ID
+            name project.POM_DEVELOPER_NAME
+            email project.POM_DEVELOPER_EMAIL
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile libraries.rxJava2
+    compile libraries.okio
+    compile libraries.guava
+}
+
+javadoc {
+    exclude '**/internal/**'
+}
+
+task sourceJar(type: Jar) {
+    classifier "sources"
+    from sourceSets.main.allJava
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = "javadoc"
+    from javadoc.destinationDir
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar
+            artifact javadocJar
+
+            pom.withXml {
+                asNode().children().last() + myPom
+            }
+        }
+    }
+    repositories {
+        mavenLocal()
+    }
+}
+
+model {
+    tasks.generatePomFileForMavenJavaPublication {
+        destination = file("$buildDir/generated-pom.xml")
+    }
+}

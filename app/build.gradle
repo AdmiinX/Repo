@@ -1,0 +1,12 @@
+group 'com.admiinx.repo'
+version '0.0.1-SNAPSHOT'
+
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+}
