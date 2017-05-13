@@ -3,7 +3,6 @@ package com.admiinx.repo.internal;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import javafx.util.Pair;
 
 import java.util.HashSet;
 import java.util.Map;
