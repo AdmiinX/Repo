@@ -26,7 +26,7 @@ public class Result<T> {
     }
 
     public boolean isSuccess() {
-        return throwable != null;
+        return throwable == null;
     }
 
     public T getData() {
