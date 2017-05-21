@@ -7,9 +7,11 @@ import io.reactivex.Maybe;
 import io.reactivex.functions.Action;
 import okio.BufferedSink;
 import okio.BufferedSource;
+import okio.ForwardingSource;
 import okio.Okio;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Callable;
 
@@ -33,10 +35,16 @@ class RepoDiskCacheImpl<Key> implements RepoDiskCache<Key> {
         return Maybe.fromCallable(new Callable<BufferedSource>() {
             @Override
             public BufferedSource call() throws Exception {
-                DiskLruCache.Snapshot snapshot = mDiskCache.get(md5(key.toString()));
+                final DiskLruCache.Snapshot snapshot = mDiskCache.get(md5(key.toString()));
                 if (snapshot == null)
                     throw new NoSuchElementException();
-                return Okio.buffer(snapshot.getSource(SNAPSHOT_INDEX));
+                return Okio.buffer(new ForwardingSource(snapshot.getSource(SNAPSHOT_INDEX)) {
+                    @Override
+                    public void close() throws IOException {
+                        snapshot.close();
+                        super.close();
+                    }
+                });
             }
         }).onErrorComplete();
     }
@@ -52,8 +60,8 @@ class RepoDiskCacheImpl<Key> implements RepoDiskCache<Key> {
                     sink.writeAll(source);
                     sink.close();
                     editor.commit();
+                    source.close();
                 }
-
             }
         });
     }
