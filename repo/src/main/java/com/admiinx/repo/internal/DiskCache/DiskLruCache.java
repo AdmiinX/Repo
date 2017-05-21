@@ -254,7 +254,7 @@ public final class DiskLruCache implements Closeable, Flushable {
 
         // Use a single background thread to evict entries.
         Executor executor = new ThreadPoolExecutor(0, 1, 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<Runnable>(), threadFactory("TowKeysRepo DiskLruCache", true));
+                new LinkedBlockingQueue<Runnable>(), threadFactory("DiskLruCache", true));
 
         return new DiskLruCache(fileSystem, directory, appVersion, valueCount, maxSize, executor);
     }
