@@ -1,9 +1,12 @@
 package com.admiinx.repo;
 
+import com.admiinx.repo.internal.TeeSource;
 import io.reactivex.*;
 import io.reactivex.annotations.NonNull;
 import io.reactivex.functions.Function;
 import okio.BufferedSource;
+import okio.Okio;
+import okio.Sink;
 
 import java.net.ConnectException;
 import java.util.concurrent.Callable;
@@ -38,22 +41,30 @@ class LoadingRepoImpl<Key, Value> implements LoadingRepo<Key, Value> {
                 .toObservable()
                 .switchIfEmpty(fetcher.fetch(key)
                         .switchIfEmpty(invalidate(key).toMaybe().cast(BufferedSource.class))
-                        .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
+                        .flatMap(new Function<BufferedSource, MaybeSource<Value>>() {
                             @Override
-                            public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                                return diskCache.put(key, source).andThen(diskCache.get(key));
-                            }
-                        })
-                        .map(new Function<BufferedSource, Value>() {
-                            @Override
-                            public Value apply(@NonNull BufferedSource source) throws Exception {
-                                return parser.parse(source);
+                            public MaybeSource<Value> apply(@NonNull final BufferedSource source) throws Exception {
+                                return diskCache.edit(key)
+                                        .map(new Function<Sink, Value>() {
+                                            @Override
+                                            public Value apply(@NonNull Sink sink) throws Exception {
+                                                TeeSource teeSource = new TeeSource(source, sink);
+                                                Value parsedValue = parser.parse(Okio.buffer(teeSource));
+                                                teeSource.close();
+                                                return parsedValue;
+                                            }
+                                        });
                             }
                         })
                         .flatMap(new Function<Value, MaybeSource<Value>>() {
                             @Override
-                            public MaybeSource<Value> apply(@NonNull Value value) throws Exception {
-                                return memoryCache.put(key, value).andThen(memoryCache.get(key));
+                            public MaybeSource<Value> apply(@NonNull final Value value) throws Exception {
+                                return memoryCache.put(key, value).andThen(Maybe.fromCallable(new Callable<Value>() {
+                                    @Override
+                                    public Value call() throws Exception {
+                                        return value;
+                                    }
+                                }));
                             }
                         })
                         .map(new Function<Value, Result<Value>>() {
@@ -73,11 +84,13 @@ class LoadingRepoImpl<Key, Value> implements LoadingRepo<Key, Value> {
                                     }
                                 });
                                 if (throwable instanceof ConnectException)
-                                    error.concatWith(diskCache.get(key)
+                                    return error.concatWith(diskCache.get(key)
                                             .map(new Function<BufferedSource, Value>() {
                                                 @Override
                                                 public Value apply(@NonNull BufferedSource source) throws Exception {
-                                                    return parser.parse(source);
+                                                    Value value = parser.parse(source);
+                                                    source.close();
+                                                    return value;
                                                 }
                                             })
                                             .map(new Function<Value, Result<Value>>() {
@@ -94,14 +107,23 @@ class LoadingRepoImpl<Key, Value> implements LoadingRepo<Key, Value> {
     }
 
     @Override
-    public Completable put(final Key key, BufferedSource source) {
-        return diskCache.put(key, source).andThen(diskCache.get(key))
-                .map(new Function<BufferedSource, Value>() {
+    public Completable put(final Key key, final BufferedSource source) {
+        return diskCache.edit(key)
+                .map(new Function<Sink, Value>() {
                     @Override
-                    public Value apply(@NonNull BufferedSource t) throws Exception {
-                        return parser.parse(t);
+                    public Value apply(@NonNull Sink sink) throws Exception {
+                        TeeSource teeSource = new TeeSource(source, sink);
+                        Value parsedValue = parser.parse(Okio.buffer(teeSource));
+                        teeSource.close();
+                        return parsedValue;
                     }
                 })
+                .switchIfEmpty(Maybe.fromCallable(new Callable<Value>() {
+                    @Override
+                    public Value call() throws Exception {
+                        return parser.parse(source);
+                    }
+                }))
                 .flatMapCompletable(new Function<Value, CompletableSource>() {
                     @Override
                     public CompletableSource apply(@NonNull Value value) throws Exception {
@@ -114,22 +136,36 @@ class LoadingRepoImpl<Key, Value> implements LoadingRepo<Key, Value> {
     public Maybe<Value> fetch(final Key key) {
         return fetcher.fetch(key)
                 .switchIfEmpty(invalidate(key).toMaybe().cast(BufferedSource.class))
-                .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
+                .flatMap(new Function<BufferedSource, MaybeSource<Value>>() {
                     @Override
-                    public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                        return diskCache.put(key, source).andThen(diskCache.get(key));
-                    }
-                })
-                .map(new Function<BufferedSource, Value>() {
-                    @Override
-                    public Value apply(@NonNull BufferedSource t) throws Exception {
-                        return parser.parse(t);
+                    public MaybeSource<Value> apply(@NonNull final BufferedSource source) throws Exception {
+                        return diskCache.edit(key)
+                                .map(new Function<Sink, Value>() {
+                                    @Override
+                                    public Value apply(@NonNull Sink sink) throws Exception {
+                                        TeeSource teeSource = new TeeSource(source, sink);
+                                        Value parsedValue = parser.parse(Okio.buffer(teeSource));
+                                        teeSource.close();
+                                        return parsedValue;
+                                    }
+                                })
+                                .switchIfEmpty(Maybe.fromCallable(new Callable<Value>() {
+                                    @Override
+                                    public Value call() throws Exception {
+                                        return parser.parse(source);
+                                    }
+                                }));
                     }
                 })
                 .flatMap(new Function<Value, MaybeSource<? extends Value>>() {
                     @Override
-                    public MaybeSource<? extends Value> apply(@NonNull Value value) throws Exception {
-                        return memoryCache.put(key, value).andThen(memoryCache.get(key));
+                    public MaybeSource<? extends Value> apply(@NonNull final Value value) throws Exception {
+                        return memoryCache.put(key, value).andThen(Maybe.fromCallable(new Callable<Value>() {
+                            @Override
+                            public Value call() throws Exception {
+                                return value;
+                            }
+                        }));
                     }
                 });
     }
@@ -138,16 +174,25 @@ class LoadingRepoImpl<Key, Value> implements LoadingRepo<Key, Value> {
     public Completable refresh(final Key key) {
         return fetcher.fetch(key)
                 .switchIfEmpty(invalidate(key).toMaybe().cast(BufferedSource.class))
-                .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
+                .flatMap(new Function<BufferedSource, MaybeSource<Value>>() {
                     @Override
-                    public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                        return diskCache.put(key, source).andThen(diskCache.get(key));
-                    }
-                })
-                .map(new Function<BufferedSource, Value>() {
-                    @Override
-                    public Value apply(@NonNull BufferedSource t) throws Exception {
-                        return parser.parse(t);
+                    public MaybeSource<Value> apply(@NonNull final BufferedSource source) throws Exception {
+                        return diskCache.edit(key)
+                                .map(new Function<Sink, Value>() {
+                                    @Override
+                                    public Value apply(@NonNull Sink sink) throws Exception {
+                                        TeeSource teeSource = new TeeSource(source, sink);
+                                        Value parsedValue = parser.parse(Okio.buffer(teeSource));
+                                        teeSource.close();
+                                        return parsedValue;
+                                    }
+                                })
+                                .switchIfEmpty(Maybe.fromCallable(new Callable<Value>() {
+                                    @Override
+                                    public Value call() throws Exception {
+                                        return parser.parse(source);
+                                    }
+                                }));
                     }
                 })
                 .flatMapCompletable(new Function<Value, CompletableSource>() {
