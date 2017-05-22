@@ -1,4 +1,4 @@
-package com.admiinx.repo.TowKeys;
+package com.admiinx.repo.TwoKeys;
 
 import com.admiinx.repo.RepoParser;
 import com.admiinx.repo.Result;
@@ -11,16 +11,16 @@ import java.net.ConnectException;
 import java.util.concurrent.Callable;
 
 /**
- * Created by admin-x on 5/7/17.
+ * {@inheritDoc}
  */
-public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRepo<PrimaryKey, ForeignKey, Value> {
+public class TwoKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TwoKeysRepo<PrimaryKey, ForeignKey, Value> {
 
-    private final TowKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher;
-    private final TowKeysRepoCache<PrimaryKey, ForeignKey, Value> memoryCache;
-    private final TowKeysRepoDiskCache<PrimaryKey, ForeignKey> diskCache;
+    private final TwoKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher;
+    private final TwoKeysRepoCache<PrimaryKey, ForeignKey, Value> memoryCache;
+    private final TwoKeysRepoDiskCache<PrimaryKey, ForeignKey> diskCache;
     private final RepoParser<Value> parser;
 
-    TowKeysRepoImpl(TowKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher, TowKeysRepoCache<PrimaryKey, ForeignKey, Value> memoryCache, TowKeysRepoDiskCache<PrimaryKey, ForeignKey> diskCache, RepoParser<Value> parser) {
+    TwoKeysRepoImpl(TwoKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher, TwoKeysRepoCache<PrimaryKey, ForeignKey, Value> memoryCache, TwoKeysRepoDiskCache<PrimaryKey, ForeignKey> diskCache, RepoParser<Value> parser) {
         this.fetcher = fetcher;
         this.memoryCache = memoryCache;
         this.diskCache = diskCache;
@@ -29,7 +29,7 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
 
     @Override
     public Observable<Result<Value>> get(final PrimaryKey primaryKey, final ForeignKey foreignKey) {
-        return memoryCache.read(primaryKey, foreignKey)
+        return memoryCache.get(primaryKey, foreignKey)
                 .map(new Function<Value, Result<Value>>() {
                     @Override
                     public Result<Value> apply(@NonNull Value data) throws Exception {
@@ -37,12 +37,12 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                     }
                 })
                 .toObservable()
-                .switchIfEmpty(fetcher.read(primaryKey, foreignKey)
+                .switchIfEmpty(fetcher.fetch(primaryKey, foreignKey)
                         .switchIfEmpty(invalidate(primaryKey, foreignKey).toMaybe().cast(BufferedSource.class))
                         .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
                             @Override
                             public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                                return diskCache.write(primaryKey, foreignKey, source).andThen(diskCache.read(primaryKey, foreignKey));
+                                return diskCache.put(primaryKey, foreignKey, source).andThen(diskCache.get(primaryKey, foreignKey));
                             }
                         })
                         .map(new Function<BufferedSource, Value>() {
@@ -54,7 +54,7 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                         .flatMap(new Function<Value, MaybeSource<Value>>() {
                             @Override
                             public MaybeSource<Value> apply(@NonNull Value value) throws Exception {
-                                return memoryCache.write(primaryKey, foreignKey, value).andThen(memoryCache.read(primaryKey, foreignKey));
+                                return memoryCache.put(primaryKey, foreignKey, value).andThen(memoryCache.get(primaryKey, foreignKey));
                             }
                         })
                         .map(new Function<Value, Result<Value>>() {
@@ -74,7 +74,7 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                                     }
                                 });
                                 if (throwable instanceof ConnectException)
-                                    error.concatWith(diskCache.read(primaryKey, foreignKey)
+                                    error.concatWith(diskCache.get(primaryKey, foreignKey)
                                             .map(new Function<BufferedSource, Value>() {
                                                 @Override
                                                 public Value apply(@NonNull BufferedSource t) throws Exception {
@@ -95,7 +95,7 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
 
     @Override
     public Completable put(final PrimaryKey primaryKey, final ForeignKey foreignKey, final BufferedSource source) {
-        return diskCache.write(primaryKey, foreignKey, source).andThen(diskCache.read(primaryKey, foreignKey))
+        return diskCache.put(primaryKey, foreignKey, source).andThen(diskCache.get(primaryKey, foreignKey))
                 .map(new Function<BufferedSource, Value>() {
                     @Override
                     public Value apply(@NonNull BufferedSource t) throws Exception {
@@ -105,19 +105,19 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                 .flatMapCompletable(new Function<Value, CompletableSource>() {
                     @Override
                     public CompletableSource apply(@NonNull Value value) throws Exception {
-                        return memoryCache.write(primaryKey, foreignKey, value);
+                        return memoryCache.put(primaryKey, foreignKey, value);
                     }
                 });
     }
 
     @Override
     public Maybe<Value> fetch(final PrimaryKey primaryKey, final ForeignKey foreignKey) {
-        return fetcher.read(primaryKey, foreignKey)
+        return fetcher.fetch(primaryKey, foreignKey)
                 .switchIfEmpty(invalidate(primaryKey, foreignKey).toMaybe().cast(BufferedSource.class))
                 .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
                     @Override
                     public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                        return diskCache.write(primaryKey, foreignKey, source).andThen(diskCache.read(primaryKey, foreignKey));
+                        return diskCache.put(primaryKey, foreignKey, source).andThen(diskCache.get(primaryKey, foreignKey));
                     }
                 })
                 .map(new Function<BufferedSource, Value>() {
@@ -129,19 +129,19 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                 .flatMap(new Function<Value, MaybeSource<? extends Value>>() {
                     @Override
                     public MaybeSource<? extends Value> apply(@NonNull Value value) throws Exception {
-                        return memoryCache.write(primaryKey, foreignKey, value).andThen(memoryCache.read(primaryKey, foreignKey));
+                        return memoryCache.put(primaryKey, foreignKey, value).andThen(memoryCache.get(primaryKey, foreignKey));
                     }
                 });
     }
 
     @Override
     public Completable refresh(final PrimaryKey primaryKey, final ForeignKey foreignKey) {
-        return fetcher.read(primaryKey, foreignKey)
+        return fetcher.fetch(primaryKey, foreignKey)
                 .switchIfEmpty(invalidate(primaryKey, foreignKey).toMaybe().cast(BufferedSource.class))
                 .flatMap(new Function<BufferedSource, MaybeSource<BufferedSource>>() {
                     @Override
                     public MaybeSource<BufferedSource> apply(@NonNull BufferedSource source) throws Exception {
-                        return diskCache.write(primaryKey, foreignKey, source).andThen(diskCache.read(primaryKey, foreignKey));
+                        return diskCache.put(primaryKey, foreignKey, source).andThen(diskCache.get(primaryKey, foreignKey));
                     }
                 })
                 .map(new Function<BufferedSource, Value>() {
@@ -153,23 +153,23 @@ public class TowKeysRepoImpl<PrimaryKey, ForeignKey, Value> implements TowKeysRe
                 .flatMapCompletable(new Function<Value, CompletableSource>() {
                     @Override
                     public CompletableSource apply(@NonNull Value value) throws Exception {
-                        return memoryCache.write(primaryKey, foreignKey, value);
+                        return memoryCache.put(primaryKey, foreignKey, value);
                     }
                 });
     }
 
     @Override
     public Completable invalidate(final PrimaryKey primaryKey, final ForeignKey foreignKey) {
-        return memoryCache.clear(primaryKey, foreignKey).andThen(diskCache.clear(primaryKey, foreignKey));
+        return memoryCache.invalidate(primaryKey, foreignKey).andThen(diskCache.invalidate(primaryKey, foreignKey));
     }
 
     @Override
     public Completable invalidate(final ForeignKey foreignKey) {
-        return memoryCache.clear(foreignKey).andThen(diskCache.clear(foreignKey));
+        return memoryCache.invalidate(foreignKey).andThen(diskCache.invalidate(foreignKey));
     }
 
     @Override
     public Completable invalidateAll() {
-        return memoryCache.clearAll().andThen(diskCache.clearAll());
+        return memoryCache.invalidateAll().andThen(diskCache.invalidateAll());
     }
 }

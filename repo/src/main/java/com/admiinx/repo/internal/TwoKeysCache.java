@@ -12,13 +12,13 @@ import java.util.concurrent.*;
 /**
  * Created by admin-x on 5/4/17.
  */
-public class TowKeysCache<PrimaryKey, ForeignKey, Value> {
+public class TwoKeysCache<PrimaryKey, ForeignKey, Value> {
 
     private LoadingCache<Pair<PrimaryKey, ForeignKey>, Value> loadingCache;
     private ConcurrentMap<ForeignKey, Set<PrimaryKey>> keysMap;
 
 
-    public TowKeysCache(long expireAfter, TimeUnit expireAfterTimeUnit, long maxSize) {
+    public TwoKeysCache(long expireAfter, TimeUnit expireAfterTimeUnit, long maxSize) {
         loadingCache = CacheBuilder.newBuilder()
                 .maximumSize(maxSize)
                 .expireAfterWrite(expireAfter, expireAfterTimeUnit)
@@ -31,7 +31,7 @@ public class TowKeysCache<PrimaryKey, ForeignKey, Value> {
         keysMap = new ConcurrentHashMap<>();
     }
 
-    public TowKeysCache(CacheBuilder<Pair<PrimaryKey, ForeignKey>, Value> cacheBuilder) {
+    public TwoKeysCache(CacheBuilder<Pair<PrimaryKey, ForeignKey>, Value> cacheBuilder) {
         loadingCache = cacheBuilder.build(new CacheLoader<Pair<PrimaryKey, ForeignKey>, Value>() {
             @Override
             public Value load(Pair<PrimaryKey, ForeignKey> key) throws Exception {
