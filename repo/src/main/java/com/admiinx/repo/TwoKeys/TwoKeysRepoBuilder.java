@@ -7,15 +7,9 @@ import java.util.concurrent.TimeUnit;
 
 public class TwoKeysRepoBuilder<PrimaryKey, ForeignKey, Value> {
 
-    private TwoKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher;
     private TwoKeysRepoCache<PrimaryKey, ForeignKey, Value> memoryCache;
     private TwoKeysRepoDiskCache<PrimaryKey, ForeignKey> diskCache;
     private RepoParser<Value> parser;
-
-    public TwoKeysRepoBuilder<PrimaryKey, ForeignKey, Value> fetcher(TwoKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher) {
-        this.fetcher = fetcher;
-        return this;
-    }
 
     public TwoKeysRepoBuilder<PrimaryKey, ForeignKey, Value> memoryCache(long expireAfter, TimeUnit expireAfterTimeUnit, long maxSize) {
         this.memoryCache = new TwoKeysRepoMemoryCacheImpl<>(expireAfter, expireAfterTimeUnit, maxSize);
@@ -33,6 +27,17 @@ public class TwoKeysRepoBuilder<PrimaryKey, ForeignKey, Value> {
     }
 
     public TwoKeysRepo<PrimaryKey, ForeignKey, Value> build() {
+        if (memoryCache == null)
+            throw new IllegalArgumentException("Repo requires set memoryCache configuration");
+        if (diskCache == null)
+            throw new IllegalArgumentException("Repo requires set diskCache configuration");
+        if (parser == null)
+            throw new IllegalArgumentException("parser == null");
+
+        return new TwoKeysRepoImpl<>(memoryCache, diskCache, parser);
+    }
+
+    public TwoKeysLoadingRepo<PrimaryKey, ForeignKey, Value> build(TwoKeysRepoFetcher<PrimaryKey, ForeignKey> fetcher) {
         if (fetcher == null)
             throw new IllegalArgumentException("fetcher == null");
         if (memoryCache == null)
@@ -42,6 +47,6 @@ public class TwoKeysRepoBuilder<PrimaryKey, ForeignKey, Value> {
         if (parser == null)
             throw new IllegalArgumentException("parser == null");
 
-        return new TwoKeysRepoImpl<>(fetcher, memoryCache, diskCache, parser);
+        return new TwoKeysLoadingRepoImpl<>(fetcher, memoryCache, diskCache, parser);
     }
 }
